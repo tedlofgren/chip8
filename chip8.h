@@ -10,8 +10,9 @@ enum
     MEMORY_SIZE = 4096,
     NUM_REGISTERS = 16,
     SCREEN_WIDTH = 64,
+    SCREEN_WIDTH_SIZE = SCREEN_WIDTH / 8,
     SCREEN_HEIGHT = 32,
-    SCREEN_SIZE = (SCREEN_WIDTH * SCREEN_HEIGHT) / 8,
+    SCREEN_SIZE = SCREEN_WIDTH_SIZE * SCREEN_HEIGHT,
     NUM_STACK_LEVELS = 16,
     NUM_KEYS = 16,
     NUM_FONTS = 16,
@@ -30,7 +31,7 @@ typedef struct Chip8
     ui16 index_register;
     ui16 program_counter;
 
-    ui8 screen_pixels[SCREEN_SIZE];
+    ui8 screen_memory[SCREEN_SIZE];
 
     ui8 delay_timer;
     ui8 sound_timer;
@@ -120,51 +121,44 @@ void chip8_run_program(Chip8 *chip8)
             chip8->index_register = (opcode & 0x0FFF);
             break;
         case 0xD000:
-            const ui8 screen_x = chip8->registers[(opcode & 0x0F00) >> 8];
-            const ui8 screen_y = chip8->registers[(opcode & 0x00F0) >> 4];
-            const ui8 sprite_size_y = (ui8)(opcode & 0x000F);
+            const ui8 screen_position_x = chip8->registers[(opcode & 0x0F00) >> 8];
+            const ui8 screen_position_y = chip8->registers[(opcode & 0x00F0) >> 4];
+            const ui8 sprite_height = (ui8)(opcode & 0x000F);
             const ui8 *sprite = &chip8->memory[chip8->index_register];
 
-            // TODO: This is wrong.
-            // Need to offset x coordinate?
-            // Y coordinate is just index into row
-            // X coordinate is 8 pixel for one index, need to multiple by 8?
-            // http://chip8.wikia.com/wiki/Instruction_Draw
-
-            // Q: Draw pixel into it's own value instead of in shared value (bits)?
-
-            // This wrapping is wrong?
-            // Some say pixels should just be cut off. Instead of moving object to opposite side.
-            const ui8 sprite_size_x = 1;
-            const ui8 sprite_pixel_x = (screen_x + sprite_size_x) > SCREEN_WIDTH ? (screen_x + sprite_size_x) % SCREEN_WIDTH : screen_x;
-            const ui8 sprite_pixel_y = (screen_y + sprite_size_y) > SCREEN_HEIGHT ? (screen_y + sprite_size_y) % SCREEN_HEIGHT : screen_y;
-
-            ui8 check_collision = 1;
-            for(ui8 i = 0; i < sprite_size_y; ++i)
+            // Clear collision
+            chip8->registers[0xF] = 0;
+     
+            const ui8 sprite_offset_bits = screen_position_x & 0x7;
+            for(ui8 y = 0; y < sprite_height; ++y)
             {
-                const ui8 sprite_pixel_data = sprite[i];
-                const ui8 screen_pixel_index = (sprite_pixel_x * sprite_pixel_y) / 8; // wrong
-                const ui8 screen_pixel_data = chip8->screen_pixels[screen_pixel_index];
-                ui8 new_screen_pixel_data = screen_pixel_data ^ sprite_pixel_data;
+                const ui8 screen_index_y = (screen_position_y + y) * SCREEN_WIDTH_SIZE;
 
-                for(ui8 j = 0; check_collision && j < MAX_SPRITE_X_PIXELS; ++j)
+                // TODO: Ensure screen_index_y and screen_index_x is within screen or handle wrap-around
+
+                const ui16 sprite_pixels = sprite[y] << 8 >> sprite_offset_bits;
+                const ui8 sprite_pixel_groups[2] = { (sprite_pixels & 0xFF00) >> 8, (sprite_pixels & 0x00FF) >> 4 };
+                for(ui8 x = 0; x < 2; ++x)
                 {
-                    // Check if pixel was set, but isn't no more.
-                    if(screen_pixel_data & (1 << j) != 0 && new_screen_pixel_data & (1 << j) == 0)
-                    {
-                        check_collision = 0;
-                        break;
-                    }
-                }
+                    const ui8 screen_index_x = (screen_position_x / SCREEN_WIDTH_SIZE) + x;
 
-                const ui8 collision = check_collision == 0 ? 1 : 0;
-                chip8->registers[0xF] = collision;
-                chip8->screen_pixels[screen_pixel_index] = new_screen_pixel_data;
+                    const ui8 screen_pixel_group = chip8->screen_memory[screen_index_x + screen_index_y];
+                    const ui8 sprite_pixel_group = sprite_pixel_groups[x];
+
+                    const ui8 new_screen_pixel_group = screen_pixel_group ^ sprite_pixel_group;
+                    chip8->screen_memory[screen_index_x + screen_index_y] = new_screen_pixel_group;
+
+                    // Check for erased pixels (collision)
+                    if(new_screen_pixel_group < screen_pixel_group)
+                        chip8->registers[0xF] = 1;
+                }
             }
+
+            int boll = 0;
 
             break;
         default:
-            printf("Unsupported opcode 0%x", opcode);
+            printf("Unsupported opcode 0%x\n", opcode);
     }
 
     chip8->program_counter += add_program_counter;
@@ -178,6 +172,6 @@ void chip8_update_timers(Chip8 *chip8)
     if(chip8->sound_timer > 0)
     {
         if(--chip8->sound_timer == 0)
-            printf("BEEP");
+            printf("BEEP\n");
     }
 }
