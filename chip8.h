@@ -79,7 +79,7 @@ void chip8_load_rom(Chip8 *chip8, const char *rom_file_path)
     FILE *rom = fopen(rom_file_path, "rb");
     if(rom == NULL)
     {
-        printf("Failed to load rom `%s`", rom_file_path);
+        printf("Failed to load rom `%s`\n", rom_file_path);
         return;
     }
 
@@ -106,21 +106,94 @@ void chip8_tick(Chip8 *chip8)
 
 void chip8_run_program(Chip8 *chip8)
 {
-    // Construct opcode by merging m[n] and m[n+1]
+    // Construct opcode
     ui16 opcode = chip8->memory[chip8->program_counter] << 8 | chip8->memory[chip8->program_counter + 1];
 
     ui16 add_program_counter = 2;
     switch(opcode & 0xF000)
     {
+        case 0x00:
+        {
+            const ui8 sub_opcode = opcode & 0x00FF;
+            switch(sub_opcode)
+            {
+                case 0xEE:
+                    chip8->program_counter = chip8->stack_levels[chip8->stack_pointer--];
+                    break;
+                default:
+                    printf("Unsupported sub_opcode 00%X\n", sub_opcode);
+            }
+            break;
+        }
+        case 0x2000:
+        {
+            const ui16 next_program_counter = opcode & 0x0FFF;
+            chip8->stack_levels[++chip8->stack_pointer] = chip8->program_counter;
+            chip8->program_counter = next_program_counter;
+            break;
+        }
         case 0x6000:
+        {
             const ui16 register_index = (opcode & 0x0F00) >> 8;
             const ui16 value = opcode & 0x00FF;
             chip8->registers[register_index] = (ui8)value;
             break;
+        }
+        case 0x7000:
+        {
+            const ui16 register_index = (opcode & 0x0F00) >> 8;
+            const ui16 value = opcode & 0x00FF;
+            chip8->registers[register_index] += (ui8)value;
+            break;
+        }
         case 0xA000:
             chip8->index_register = (opcode & 0x0FFF);
             break;
+        case 0xF000:
+        {
+            const ui16 register_index = (opcode & 0x0F00) >> 8;
+            const ui8 sub_opcode = opcode & 0x00FF;
+            switch(sub_opcode)
+            {
+                case 0x07:
+                    chip8->registers[register_index] = chip8->delay_timer;
+                    break;
+                case 0x15:
+                    chip8->delay_timer = chip8->registers[register_index];
+                    break;
+                case 0x18:
+                    chip8->sound_timer = chip8->registers[register_index];
+                    break;
+                case 0x29:
+                {
+                    const ui8 font_sprite_index = chip8->registers[register_index] * FONT_SIZE;
+                    chip8->index_register = font_sprite_index;
+                    break;
+                }
+                case 0x33:
+                {
+                    const ui8 decimal_value = chip8->registers[register_index];
+                    const ui8 hundreds = (decimal_value / 100) % 10;
+                    const ui8 tens = (decimal_value / 10) % 10;
+                    const ui8 ones = decimal_value % 10;
+                    chip8->memory[chip8->index_register + 0] = hundreds;
+                    chip8->memory[chip8->index_register + 1] = tens;
+                    chip8->memory[chip8->index_register + 2] = ones;
+                    break;
+                }
+                case 0x65:
+                {
+                    for(ui8 i = 0; i <= register_index; ++i)
+                        chip8->registers[i] = chip8->memory[chip8->index_register + i];
+                    break;
+                }
+                default:
+                    printf("Unsupported sub_opcode Fx%X\n", sub_opcode);
+            }
+            break;
+        }
         case 0xD000:
+        {
             const ui8 screen_position_x = chip8->registers[(opcode & 0x0F00) >> 8];
             const ui8 screen_position_y = chip8->registers[(opcode & 0x00F0) >> 4];
             const ui8 sprite_height = (ui8)(opcode & 0x000F);
@@ -137,7 +210,7 @@ void chip8_run_program(Chip8 *chip8)
                 // TODO: Ensure screen_index_y and screen_index_x is within screen or handle wrap-around
 
                 const ui16 sprite_pixels = sprite[y] << 8 >> sprite_offset_bits;
-                const ui8 sprite_pixel_groups[2] = { (sprite_pixels & 0xFF00) >> 8, (sprite_pixels & 0x00FF) >> 4 };
+                const ui8 sprite_pixel_groups[2] = { (sprite_pixels & 0xFF00) >> 8, (sprite_pixels & 0x00FF) >> 4 }; // TODO: Fix warning
                 for(ui8 x = 0; x < 2; ++x)
                 {
                     const ui8 screen_index_x = (screen_position_x / SCREEN_WIDTH_SIZE) + x;
@@ -153,12 +226,10 @@ void chip8_run_program(Chip8 *chip8)
                         chip8->registers[0xF] = 1;
                 }
             }
-
-            int boll = 0;
-
             break;
+        }
         default:
-            printf("Unsupported opcode 0%x\n", opcode);
+            printf("Unsupported opcode %X\n", opcode);
     }
 
     chip8->program_counter += add_program_counter;
