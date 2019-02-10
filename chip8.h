@@ -1,8 +1,11 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 typedef unsigned char ui8;
 typedef unsigned short ui16;
+typedef unsigned long ui32;
 typedef signed long i32;
 
 enum
@@ -48,6 +51,7 @@ void chip8_init(Chip8 *chip8)
 {
     memset(chip8, 0, sizeof(Chip8));
     chip8_setup_fonts(chip8);
+    srand((ui32)time(0));
 }
 
 void chip8_setup_fonts(Chip8 *chip8)
@@ -119,10 +123,18 @@ void chip8_run_program(Chip8 *chip8)
             {
                 case 0xEE:
                     chip8->program_counter = chip8->stack_levels[chip8->stack_pointer--];
+                    // `program_counter` still needs to be incremented by `add_program_counter` at end of execution
                     break;
                 default:
                     printf("Unsupported sub_opcode 00%X\n", sub_opcode);
             }
+            break;
+        }
+        case 0x1000:
+        {
+            const ui16 next_program_counter = opcode & 0x0FFF;
+            chip8->program_counter = next_program_counter;
+            add_program_counter = 0;
             break;
         }
         case 0x2000:
@@ -130,20 +142,96 @@ void chip8_run_program(Chip8 *chip8)
             const ui16 next_program_counter = opcode & 0x0FFF;
             chip8->stack_levels[++chip8->stack_pointer] = chip8->program_counter;
             chip8->program_counter = next_program_counter;
+            add_program_counter = 0;
+            break;
+        }
+        case 0x3000:
+        {
+            const ui8 register_index = (opcode & 0x0F00) >> 8;
+            const ui8 value = opcode & 0x00FF;
+            if(chip8->registers[register_index] == value)
+                add_program_counter += 2;
+            break;
+        }
+        case 0x4000:
+        {
+            const ui8 register_index = (opcode & 0x0F00) >> 8;
+            const ui8 value = opcode & 0x00FF;
+            if(chip8->registers[register_index] != value)
+                add_program_counter += 2;
             break;
         }
         case 0x6000:
         {
-            const ui16 register_index = (opcode & 0x0F00) >> 8;
-            const ui16 value = opcode & 0x00FF;
-            chip8->registers[register_index] = (ui8)value;
+            const ui8 register_index = (opcode & 0x0F00) >> 8;
+            const ui8 value = opcode & 0x00FF;
+            chip8->registers[register_index] = value;
             break;
         }
         case 0x7000:
         {
-            const ui16 register_index = (opcode & 0x0F00) >> 8;
-            const ui16 value = opcode & 0x00FF;
+            const ui8 register_index = (opcode & 0x0F00) >> 8;
+            const ui8 value = opcode & 0x00FF;
             chip8->registers[register_index] += (ui8)value;
+            break;
+        }
+        case 0x8000:
+        {
+            const ui8 register_index_x = (opcode & 0x0F00) >> 8;
+            const ui8 register_index_y = (opcode & 0x00F0) >> 4;
+            const ui8 sub_opcode = opcode & 0x000F;
+            switch(sub_opcode)
+            {
+                case 0x0:
+                    chip8->registers[register_index_x] = chip8->registers[register_index_y];
+                    break;
+                case 0x1:
+                    chip8->registers[register_index_x] = chip8->registers[register_index_x] | chip8->registers[register_index_y];
+                    break;
+                case 0x2:
+                    chip8->registers[register_index_x] = chip8->registers[register_index_x] & chip8->registers[register_index_y];
+                    break;
+                case 0x3:
+                    chip8->registers[register_index_x] = chip8->registers[register_index_x] ^ chip8->registers[register_index_y];
+                    break;
+                case 0x4:
+                {
+                    const ui16 value = chip8->registers[register_index_x] + chip8->registers[register_index_y];
+                    chip8->registers[0xF] = value > 0xFF ? 1 : 0;
+                    chip8->registers[register_index_x] = value & 0x00FF;
+                    break;
+                }
+                case 0x5:
+                {
+                    const ui8 value_x = chip8->registers[register_index_x];
+                    const ui8 value_y = chip8->registers[register_index_y];
+                    chip8->registers[0xF] = value_x > value_y ? 1 : 0;
+                    chip8->registers[register_index_x] = value_x - value_y;
+                    break;
+                }
+                case 0x6:
+                {
+                    const ui8 value = chip8->registers[register_index_x];
+                    chip8->registers[0xF] = value & (1 << 0);
+                    chip8->registers[register_index_x] = value / 2;
+                    break;
+                }
+                case 0x7:
+                {
+                    const ui8 value_x = chip8->registers[register_index_x];
+                    const ui8 value_y = chip8->registers[register_index_y];
+                    chip8->registers[0xF] = value_y > value_x ? 1 : 0;
+                    chip8->registers[register_index_x] = value_y - value_x;
+                    break;
+                }
+                case 0xE:
+                {
+                    const ui8 value = chip8->registers[register_index_x];
+                    chip8->registers[0xF] = value & (1 << 7);
+                    chip8->registers[register_index_x] = value * 2;
+                    break;
+                }
+            }  
             break;
         }
         case 0xA000:
@@ -151,7 +239,7 @@ void chip8_run_program(Chip8 *chip8)
             break;
         case 0xF000:
         {
-            const ui16 register_index = (opcode & 0x0F00) >> 8;
+            const ui8 register_index = (opcode & 0x0F00) >> 8;
             const ui8 sub_opcode = opcode & 0x00FF;
             switch(sub_opcode)
             {
@@ -192,6 +280,14 @@ void chip8_run_program(Chip8 *chip8)
             }
             break;
         }
+        case 0xC000:
+        {
+            const ui8 register_index = (opcode & 0x0F00) >> 8;
+            const ui8 value = opcode & 0x00FF;
+            const ui8 random_value = rand() % 0xFF;
+            chip8->registers[register_index] = (ui8)(value & random_value);
+            break;
+        }
         case 0xD000:
         {
             const ui8 screen_position_x = chip8->registers[(opcode & 0x0F00) >> 8];
@@ -226,6 +322,16 @@ void chip8_run_program(Chip8 *chip8)
                         chip8->registers[0xF] = 1;
                 }
             }
+            break;
+        }
+        case 0xE000:
+        {
+            const ui8 register_index = (opcode & 0x0F00) >> 8;
+            const ui8 sub_opcode = opcode & 0x00FF;
+            const ui8 key_index = chip8->registers[register_index];
+            const ui8 key_state = chip8->keys[key_index];
+            if((sub_opcode == 0x9E && key_state == 1) || (sub_opcode == 0xA1 && key_state == 0))
+                add_program_counter += 2;
             break;
         }
         default:
