@@ -352,3 +352,47 @@ void chip8_update_timers(Chip8 *chip8)
             printf("BEEP\n");
     }
 }
+
+enum
+{
+    C8_KEY_1 = 0,
+    C8_KEY_2 = 1,
+    C8_KEY_3 = 2,
+    C8_KEY_4 = 4,
+    C8_KEY_5 = 5,
+    C8_KEY_6 = 6,
+    C8_KEY_7 = 8,
+    C8_KEY_8 = 9,
+    C8_KEY_9 = 10,
+    C8_KEY_0 = 13,
+
+    C8_KEY_A = 12,
+    C8_KEY_B = 14,
+    C8_KEY_C = 3,
+    C8_KEY_D = 7,
+    C8_KEY_E = 11,
+    C8_KEY_F = 15
+};
+
+/*
+    Chip8 Keyboard Layout:
+    1, 2, 3, C
+    4, 5, 6, D
+    7, 8, 9, E
+    A, 0, B, F
+*/
+
+typedef struct Chip8InputKey
+{
+    ui8 key_index;
+    ui8 key_state;
+} Chip8InputKey;
+
+void chip8_feed_input(Chip8 *chip8, const Chip8InputKey *keys, const ui8 num_keys)
+{
+    if(keys == NULL || num_keys == 0)
+        return;
+    
+    for(ui8 i = 0; i < num_keys && i < NUM_KEYS; ++i)
+        chip8->keys[keys[i].key_index] = keys[i].key_state;
+}
