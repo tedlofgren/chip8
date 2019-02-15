@@ -16,6 +16,7 @@ enum
     SCREEN_WIDTH_SIZE = SCREEN_WIDTH / 8,
     SCREEN_HEIGHT = 32,
     SCREEN_SIZE = SCREEN_WIDTH_SIZE * SCREEN_HEIGHT,
+    SCREEN_PIXELS = SCREEN_WIDTH * SCREEN_HEIGHT,
     NUM_STACK_LEVELS = 16,
     NUM_KEYS = 16,
     NUM_FONTS = 16,
@@ -303,13 +304,11 @@ void chip8_run_program(Chip8 *chip8)
             {
                 const ui8 screen_index_y = (screen_position_y + y) * SCREEN_WIDTH_SIZE;
 
-                // TODO: Ensure screen_index_y and screen_index_x is within screen or handle wrap-around
-
                 const ui16 sprite_pixels = sprite[y] << 8 >> sprite_offset_bits;
-                const ui8 sprite_pixel_groups[2] = { (sprite_pixels & 0xFF00) >> 8, (sprite_pixels & 0x00FF) >> 4 }; // TODO: Fix warning
+                const ui8 sprite_pixel_groups[2] = { (sprite_pixels & 0xFF00) >> 8, sprite_pixels & 0x00FF }; // TODO: Fix warning
                 for(ui8 x = 0; x < 2; ++x)
                 {
-                    const ui8 screen_index_x = (screen_position_x / SCREEN_WIDTH_SIZE) + x;
+                    const ui8 screen_index_x = ((screen_position_x + x) / SCREEN_WIDTH_SIZE) % SCREEN_WIDTH_SIZE;
 
                     const ui8 screen_pixel_group = chip8->screen_memory[screen_index_x + screen_index_y];
                     const ui8 sprite_pixel_group = sprite_pixel_groups[x];
@@ -395,4 +394,41 @@ void chip8_feed_input(Chip8 *chip8, const Chip8InputKey *keys, const ui8 num_key
     
     for(ui8 i = 0; i < num_keys && i < NUM_KEYS; ++i)
         chip8->keys[keys[i].key_index] = keys[i].key_state;
+}
+
+ui8 chip8_screen_index(ui8 x, ui8 y)
+{
+    return (x / SCREEN_WIDTH_SIZE) + y * SCREEN_WIDTH_SIZE;
+}
+
+ui16 chip8_pixel_index(ui8 x, ui8 y)
+{
+    return (ui16)x + (ui16)y * SCREEN_WIDTH;
+}
+
+void chip8_pixel_data(Chip8 *chip8, ui8 *pixels, const ui16 num_pixels)
+{
+    if(pixels == NULL || num_pixels == 0)
+        return;
+
+    memset(pixels, 0, num_pixels);
+
+    for(ui8 screen_position_y = 0; screen_position_y < SCREEN_HEIGHT; ++screen_position_y)
+    {
+        const ui8 screen_index_y = screen_position_y * SCREEN_WIDTH_SIZE;
+        for(ui8 screen_position_x = 0; screen_position_x < SCREEN_WIDTH; screen_position_x += 8)
+        {
+            const ui8 screen_index_x = screen_position_x / SCREEN_WIDTH_SIZE;
+            const ui8 screen_pixels = chip8->screen_memory[screen_index_x + screen_index_y];
+            if(screen_pixels == 0)
+                continue;
+
+            for(ui8 pixel = 0; pixel < 8; ++pixel)
+            {
+                const ui16 pixel_index = (ui16)(screen_position_x + pixel) + (ui16)screen_position_y * SCREEN_WIDTH;
+                const ui8 pixel_bit = 1 << (7 - pixel);
+                pixels[pixel_index] = (screen_pixels & pixel_bit) != 0;
+            }
+        }
+    }
 }
