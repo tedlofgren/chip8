@@ -19,14 +19,15 @@ typedef struct InputMap
 
 const InputMap INPUT_MAP[NUM_KEYS] =
 {
-    { 0x31, C8_KEY_1 }, { 0x32, C8_KEY_2 }, { 0x33, C8_KEY_3 }, { 0x34, C8_KEY_C },
-    { 0x51, C8_KEY_4 }, { 0x57, C8_KEY_5 }, { 0x45, C8_KEY_6 }, { 0x52, C8_KEY_D },
-    { 0x41, C8_KEY_7 }, { 0x53, C8_KEY_8 }, { 0x44, C8_KEY_9 }, { 0x46, C8_KEY_E },
-    { 0x5A, C8_KEY_A }, { 0x58, C8_KEY_0 }, { 0x43, C8_KEY_B }, { 0x56, C8_KEY_F }
+    { 0x31, C8_KEY_1 }, { 0x32, C8_KEY_2 }, { 0x33, C8_KEY_3 }, { 0x34, C8_KEY_C }, // 1:1, 2:2, 3:3, 4:C
+    { 0x51, C8_KEY_4 }, { 0x57, C8_KEY_5 }, { 0x45, C8_KEY_6 }, { 0x52, C8_KEY_D }, // Q:4, W:5, E:6, R:D
+    { 0x41, C8_KEY_7 }, { 0x53, C8_KEY_8 }, { 0x44, C8_KEY_9 }, { 0x46, C8_KEY_E }, // A:7, S:8, D:9, F:E
+    { 0x5A, C8_KEY_A }, { 0x58, C8_KEY_0 }, { 0x43, C8_KEY_B }, { 0x56, C8_KEY_F }  // Z:A, X:0, C:B, V:F
 };
 
 void read_input(InputKey *keys, const ui8 num_keys, ui8 *num_available_keys);
 void map_input(const InputKey *keys, const ui8 num_keys, Chip8InputKey *chip8_keys, const ui8 num_chip8_keys, ui8 *num_available_chip8_keys);
+void draw(ui8 *pixels, const ui16 num_pixels);
 
 int main(int n_args, int **args)
 {
@@ -48,6 +49,7 @@ int main(int n_args, int **args)
 
     InputKey input_keys[NUM_KEYS] = {0};
     Chip8InputKey chip8_input_keys[NUM_KEYS] = {0};
+    ui8 pixels[SCREEN_PIXELS] = {0};
 
     float hz_timer = 0.f;
     ui8 run = 1;
@@ -65,9 +67,12 @@ int main(int n_args, int **args)
             read_input(input_keys, NUM_KEYS, &num_available_input_keys);
             ui8 num_available_chip8_input_keys = 0;
             map_input(input_keys, num_available_input_keys, chip8_input_keys, NUM_KEYS, &num_available_chip8_input_keys);
-            
             chip8_feed_input(&chip8, chip8_input_keys, num_available_chip8_input_keys);
+
             chip8_tick(&chip8);
+
+            chip8_pixel_data(&chip8, pixels, SCREEN_PIXELS);
+            draw(pixels, SCREEN_PIXELS);
         }
 
         Sleep(1);
@@ -127,4 +132,26 @@ void map_input(const InputKey *keys, const ui8 num_keys, Chip8InputKey *chip8_ke
             }
         }
     }
+}
+
+void draw(ui8 *pixels, const ui16 num_pixels)
+{
+    HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    SMALL_RECT window_size = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT };
+    SetConsoleWindowInfo(handle, TRUE, &window_size);
+
+    COORD screen_buffer_size = { SCREEN_WIDTH, SCREEN_HEIGHT };
+    SetConsoleScreenBufferSize(handle, screen_buffer_size);
+
+    CHAR_INFO console_buffer[SCREEN_WIDTH * SCREEN_HEIGHT] = {0};
+    for(ui16 i = 0; i < num_pixels; ++i)
+    {
+        if(pixels[i] != 0)
+            console_buffer[i].Attributes = BACKGROUND_RED|BACKGROUND_GREEN|BACKGROUND_BLUE|BACKGROUND_INTENSITY;
+    }
+
+    COORD buffer_start = {0,0};
+    SMALL_RECT buffer_rect = { 0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1 } ; 
+    WriteConsoleOutputA(handle, console_buffer, screen_buffer_size, buffer_start, &buffer_rect);
 }
