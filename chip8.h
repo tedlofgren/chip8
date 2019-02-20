@@ -354,23 +354,23 @@ void chip8_update_timers(Chip8 *chip8)
 
 enum
 {
-    C8_KEY_1 = 0,
-    C8_KEY_2 = 1,
-    C8_KEY_3 = 2,
-    C8_KEY_4 = 4,
-    C8_KEY_5 = 5,
-    C8_KEY_6 = 6,
-    C8_KEY_7 = 8,
-    C8_KEY_8 = 9,
-    C8_KEY_9 = 10,
-    C8_KEY_0 = 13,
+    C8_KEY_0 = 0x0,
+    C8_KEY_1 = 0x1,
+    C8_KEY_2 = 0x2,
+    C8_KEY_3 = 0x3,
+    C8_KEY_4 = 0x4,
+    C8_KEY_5 = 0x5,
+    C8_KEY_6 = 0x6,
+    C8_KEY_7 = 0x7,
+    C8_KEY_8 = 0x8,
+    C8_KEY_9 = 0x9,
 
-    C8_KEY_A = 12,
-    C8_KEY_B = 14,
-    C8_KEY_C = 3,
-    C8_KEY_D = 7,
-    C8_KEY_E = 11,
-    C8_KEY_F = 15
+    C8_KEY_A = 0xA,
+    C8_KEY_B = 0xB,
+    C8_KEY_C = 0xC,
+    C8_KEY_D = 0xD,
+    C8_KEY_E = 0xE,
+    C8_KEY_F = 0xF
 };
 
 /*
