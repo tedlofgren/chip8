@@ -1,5 +1,4 @@
 #include <stdio.h>
-
 #define WIN32_LEAN_AND_MEAN 1
 #include <Windows.h>
 
@@ -7,13 +6,13 @@
 
 typedef struct InputKey
 {
-    i32 virtual_key_code;
+    ui8 virtual_key_code;
     ui8 virtual_key_state;
 } InputKey;
 
 typedef struct InputMap
 {
-    i32 virtual_key_code;
+    ui8 virtual_key_code;
     ui8 chip8_key_index;
 } InputMap;
 
@@ -25,6 +24,16 @@ const InputMap INPUT_MAP[NUM_KEYS] =
     { 0x5A, C8_KEY_A }, { 0x58, C8_KEY_0 }, { 0x43, C8_KEY_B }, { 0x56, C8_KEY_F }  // Z:A, X:0, C:B, V:F
 };
 
+typedef struct KeyboardProcIO
+{
+    InputKey *keys;
+    ui8 num_keys;
+    ui8 *num_available_keys;
+} KeyboardProcIO;
+
+KeyboardProcIO *_keyboard_proc_io = NULL;
+LRESULT CALLBACK _keyboard_proc_func(int nCode, WPARAM wParam, LPARAM lParam);
+
 void read_input(InputKey *keys, const ui8 num_keys, ui8 *num_available_keys);
 void map_input(const InputKey *keys, const ui8 num_keys, Chip8InputKey *chip8_keys, const ui8 num_chip8_keys, ui8 *num_available_chip8_keys);
 void draw(ui8 *pixels, const ui16 num_pixels);
@@ -33,15 +42,13 @@ int main(int n_args, int **args)
 {
     (void)n_args; (void)args;
 
-    printf("Chip8 Emulator\n");
+    SetWindowsHookEx(WH_KEYBOARD_LL, _keyboard_proc_func, GetModuleHandle(NULL), 0);
 
     Chip8 chip8 = {0};
     chip8_init(&chip8);
     chip8_load_rom(&chip8, "./roms/PONG");
 
-    LARGE_INTEGER frequency = {0};
-    QueryPerformanceFrequency(&frequency);
-    LARGE_INTEGER current_time = {0};
+    LARGE_INTEGER current_time = {0}, last_time = {0};
     QueryPerformanceCounter(&current_time);
 
     const float HZ = 60.f;
@@ -55,7 +62,7 @@ int main(int n_args, int **args)
     ui8 run = 1;
     while(run) 
     {
-        LARGE_INTEGER last_time = current_time;
+        last_time = current_time;
         QueryPerformanceCounter(&current_time);
         float dt = (float)((double)(current_time.QuadPart - last_time.QuadPart) / 10000.f);
 
@@ -81,6 +88,30 @@ int main(int n_args, int **args)
     return 0;
 }
 
+LRESULT CALLBACK _keyboard_proc_func(int nCode, WPARAM wParam, LPARAM lParam)
+{
+    if (nCode < 0 || _keyboard_proc_io == NULL)
+		return CallNextHookEx(NULL, nCode, wParam, lParam);
+
+    InputKey *keys = _keyboard_proc_io->keys;
+    const ui8 num_keys = _keyboard_proc_io->num_keys;
+    ui8 *num_available_keys = _keyboard_proc_io->num_available_keys;
+
+    if(*num_available_keys == num_keys)
+        return CallNextHookEx(NULL, nCode, wParam, lParam);
+
+    const KBDLLHOOKSTRUCT *info = (KBDLLHOOKSTRUCT*)lParam;
+    const ui8 virtual_key_code = (ui8)info->vkCode;
+    const ui8 virtual_key_state = ((ui8)info->flags & LLKHF_UP) ? 0 : 1;
+    //printf("proc: key input: 0x%X state: %i\n", virtual_key_code, *num_available_keys);
+
+    keys[*num_available_keys].virtual_key_code = virtual_key_code;
+    keys[*num_available_keys].virtual_key_state = virtual_key_state;
+    (*num_available_keys)++;
+
+    return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
 void read_input(InputKey *keys, const ui8 num_keys, ui8 *num_available_keys)
 {
     if(num_available_keys == NULL)
@@ -91,23 +122,17 @@ void read_input(InputKey *keys, const ui8 num_keys, ui8 *num_available_keys)
     if(keys == NULL || num_keys == 0)
         return;
 
-    enum { NUM_INPUT_RECORDS = 32 };
-    HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
-	INPUT_RECORD records[NUM_INPUT_RECORDS] = {0};
-	DWORD num_records = NUM_INPUT_RECORDS;
-	DWORD num_available_records = 0;
-
-    PeekConsoleInput(handle, records, num_records, &num_available_records);
-    for(ui8 i = 0; i < num_available_records && *num_available_keys < num_keys; ++i) {
-        if(records[i].Event.KeyEvent.wVirtualKeyCode == 0)
-            continue;
-
-        //printf("key input: 0x%X state: %i (%i)\n", records[i].Event.KeyEvent.wVirtualKeyCode, records[i].Event.KeyEvent.bKeyDown, num_available_records);
-        keys[*num_available_keys].virtual_key_code = records[i].Event.KeyEvent.wVirtualKeyCode;
-        keys[*num_available_keys].virtual_key_state = (ui8)records[i].Event.KeyEvent.bKeyDown;
-        (*num_available_keys)++;
+    KeyboardProcIO keyboard_proc_io = { keys, num_keys, num_available_keys };
+    _keyboard_proc_io = &keyboard_proc_io;
+    {
+        HWND window = GetConsoleWindow();
+        MSG msg = {0};
+        while (PeekMessage(&msg, window, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
     }
-    FlushConsoleInputBuffer(handle);
+    _keyboard_proc_io = NULL;
 }
 
 void map_input(const InputKey *keys, const ui8 num_keys, Chip8InputKey *chip8_keys, const ui8 num_chip8_keys, ui8 *num_available_chip8_keys)
