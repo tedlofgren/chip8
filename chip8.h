@@ -26,6 +26,11 @@ enum
     MAX_SPRITE_Y_PIXELS = 15
 };
 
+enum
+{
+    EVENT_DRAW = 0x01
+};
+
 typedef struct Chip8
 {
     ui8 memory[MEMORY_SIZE];
@@ -103,8 +108,18 @@ void chip8_load_rom(Chip8 *chip8, const char *rom_file_path)
 void chip8_run_program(Chip8 *chip8);
 void chip8_update_timers(Chip8 *chip8);
 
-void chip8_tick(Chip8 *chip8)
+void chip8_tick(Chip8 *chip8, ui8 *event)
 {
+    if(event) {
+        const ui8 msb_opcode = chip8->memory[chip8->program_counter];
+        switch(msb_opcode & 0xF0)
+        {
+            case 0xD0:
+                *event = EVENT_DRAW;
+            break;
+        }
+    }
+
     chip8_run_program(chip8);
     chip8_update_timers(chip8);
 }
@@ -112,7 +127,7 @@ void chip8_tick(Chip8 *chip8)
 void chip8_run_program(Chip8 *chip8)
 {
     // Construct opcode
-    ui16 opcode = chip8->memory[chip8->program_counter] << 8 | chip8->memory[chip8->program_counter + 1];
+    const ui16 opcode = chip8->memory[chip8->program_counter] << 8 | chip8->memory[chip8->program_counter + 1];
 
     ui16 add_program_counter = 2;
     switch(opcode & 0xF000)
