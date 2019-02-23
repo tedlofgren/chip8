@@ -1,4 +1,3 @@
-#include <stdio.h>
 #define WIN32_LEAN_AND_MEAN 1
 #include <Windows.h>
 
@@ -36,7 +35,7 @@ LRESULT CALLBACK _keyboard_proc_func(int nCode, WPARAM wParam, LPARAM lParam);
 
 void read_input(InputKey *keys, const ui8 num_keys, ui8 *num_available_keys);
 void map_input(const InputKey *keys, const ui8 num_keys, Chip8InputKey *chip8_keys, const ui8 num_chip8_keys, ui8 *num_available_chip8_keys);
-void draw(ui8 *pixels, const ui16 num_pixels);
+void draw(const ui8 *pixels, const ui16 num_pixels, const HANDLE handle, CHAR_INFO *screen_buffer, const COORD screen_buffer_size);
 
 int main(int n_args, int **args)
 {
@@ -44,30 +43,33 @@ int main(int n_args, int **args)
 
     SetWindowsHookEx(WH_KEYBOARD_LL, _keyboard_proc_func, GetModuleHandle(NULL), 0);
 
+    const HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    const SMALL_RECT window_size = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT };
+    SetConsoleWindowInfo(handle, TRUE, &window_size);
+    const COORD screen_buffer_size = { SCREEN_WIDTH, SCREEN_HEIGHT };
+    SetConsoleScreenBufferSize(handle, screen_buffer_size);
+
     Chip8 chip8 = {0};
     chip8_init(&chip8);
     chip8_load_rom(&chip8, "./roms/PONG");
 
     LARGE_INTEGER current_time = {0}, last_time = {0};
-    QueryPerformanceCounter(&current_time);
-
-    const float HZ = 60.f;
-    const float SPEED = 1.f;
-
     InputKey input_keys[NUM_KEYS] = {0};
     Chip8InputKey chip8_input_keys[NUM_KEYS] = {0};
     ui8 pixels[SCREEN_PIXELS] = {0};
+    CHAR_INFO screen_buffer[SCREEN_PIXELS] = {0};
 
+    const float HZ = 6.f * 60.f;
     float hz_timer = 0.f;
     ui8 run = 1;
     while(run) 
     {
         last_time = current_time;
         QueryPerformanceCounter(&current_time);
-        float dt = (float)((double)(current_time.QuadPart - last_time.QuadPart) / 10000.f);
+        float dt = (float)((double)(current_time.QuadPart - last_time.QuadPart) / 10000000.f);
 
-        hz_timer += (dt * SPEED);
-        if(hz_timer >= (1000.0f / HZ)) {
+        hz_timer += dt;
+        if(hz_timer >= (1.f / HZ)) {
             hz_timer = 0.f;
 
             ui8 num_available_input_keys = 0;
@@ -76,13 +78,19 @@ int main(int n_args, int **args)
             map_input(input_keys, num_available_input_keys, chip8_input_keys, NUM_KEYS, &num_available_chip8_input_keys);
             chip8_feed_input(&chip8, chip8_input_keys, num_available_chip8_input_keys);
 
-            chip8_tick(&chip8);
+            ui8 event = 0;
+            chip8_tick(&chip8, &event);
 
-            chip8_pixel_data(&chip8, pixels, SCREEN_PIXELS);
-            draw(pixels, SCREEN_PIXELS);
+            if(event == EVENT_DRAW) {
+                chip8_pixel_data(&chip8, pixels, SCREEN_PIXELS);
+                draw(pixels, SCREEN_PIXELS, handle, screen_buffer, screen_buffer_size);
+            }
         }
 
-        Sleep(1);
+        QueryPerformanceCounter(&last_time);
+        float frame_time = (float)((double)(last_time.QuadPart - current_time.QuadPart) / 10000000.f) + 0.002f; // Sleep(1) will result in ~2ms
+        if(frame_time < (1.f / HZ))
+            Sleep(1);
     }
 
     return 0;
@@ -103,7 +111,7 @@ LRESULT CALLBACK _keyboard_proc_func(int nCode, WPARAM wParam, LPARAM lParam)
     const KBDLLHOOKSTRUCT *info = (KBDLLHOOKSTRUCT*)lParam;
     const ui8 virtual_key_code = (ui8)info->vkCode;
     const ui8 virtual_key_state = ((ui8)info->flags & LLKHF_UP) ? 0 : 1;
-    //printf("proc: key input: 0x%X state: %i\n", virtual_key_code, *num_available_keys);
+    //printf("proc: key input: 0x%X state: %i\n", virtual_key_code, virtual_key_state);
 
     keys[*num_available_keys].virtual_key_code = virtual_key_code;
     keys[*num_available_keys].virtual_key_state = virtual_key_state;
@@ -159,24 +167,18 @@ void map_input(const InputKey *keys, const ui8 num_keys, Chip8InputKey *chip8_ke
     }
 }
 
-void draw(ui8 *pixels, const ui16 num_pixels)
+void draw(const ui8 *pixels, const ui16 num_pixels, const HANDLE handle, CHAR_INFO *screen_buffer, const COORD screen_buffer_size)
 {
-    HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    if(pixels == NULL || num_pixels == 0 || screen_buffer == NULL || (screen_buffer_size.X + screen_buffer_size.Y) == 0)
+        return;
 
-    SMALL_RECT window_size = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT };
-    SetConsoleWindowInfo(handle, TRUE, &window_size);
-
-    COORD screen_buffer_size = { SCREEN_WIDTH, SCREEN_HEIGHT };
-    SetConsoleScreenBufferSize(handle, screen_buffer_size);
-
-    CHAR_INFO console_buffer[SCREEN_WIDTH * SCREEN_HEIGHT] = {0};
-    for(ui16 i = 0; i < num_pixels; ++i)
+    const ui16 num_screen_buffer_pixels = screen_buffer_size.X * screen_buffer_size.Y;
+    for(ui16 i = 0; i < num_pixels && i < num_screen_buffer_pixels; ++i)
     {
-        if(pixels[i] != 0)
-            console_buffer[i].Attributes = BACKGROUND_RED|BACKGROUND_GREEN|BACKGROUND_BLUE|BACKGROUND_INTENSITY;
+        screen_buffer[i].Attributes = pixels[i] != 0 ? BACKGROUND_RED|BACKGROUND_GREEN|BACKGROUND_BLUE|BACKGROUND_INTENSITY : 0;
     }
 
-    COORD buffer_start = {0,0};
-    SMALL_RECT buffer_rect = { 0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1 } ; 
-    WriteConsoleOutputA(handle, console_buffer, screen_buffer_size, buffer_start, &buffer_rect);
+    const COORD buffer_start = {0};
+    SMALL_RECT buffer_rect = { 0, 0, screen_buffer_size.X - 1, screen_buffer_size.Y - 1 }; // const gives C4090
+    WriteConsoleOutput(handle, screen_buffer, screen_buffer_size, buffer_start, &buffer_rect);
 }
