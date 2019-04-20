@@ -44,14 +44,14 @@ int main(int n_args, int **args)
     SetWindowsHookEx(WH_KEYBOARD_LL, _keyboard_proc_func, GetModuleHandle(NULL), 0);
 
     const HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
-    const SMALL_RECT window_size = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT };
+    const SMALL_RECT window_size = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT - 1 };
     SetConsoleWindowInfo(handle, TRUE, &window_size);
     const COORD screen_buffer_size = { SCREEN_WIDTH, SCREEN_HEIGHT };
     SetConsoleScreenBufferSize(handle, screen_buffer_size);
 
     Chip8 chip8 = {0};
     chip8_init(&chip8);
-    chip8_load_rom(&chip8, "./roms/PONG");
+    chip8_load_rom(&chip8, "./roms/INVADERS");
 
     LARGE_INTEGER current_time = {0}, last_time = {0};
     InputKey input_keys[NUM_KEYS] = {0};
@@ -59,8 +59,10 @@ int main(int n_args, int **args)
     ui8 pixels[SCREEN_PIXELS] = {0};
     CHAR_INFO screen_buffer[SCREEN_PIXELS] = {0};
 
-    const float HZ = 6.f * 60.f;
-    float hz_timer = 0.f;
+    const float UPDATE_TIMERS_HZ = 60.f;
+    const float RUN_PROGRAM_HZ = 10.f * 60.f;
+    float update_timers_timer = 0.f;
+    float run_program_timer = 0.f;
     ui8 run = 1;
     while(run) 
     {
@@ -68,9 +70,10 @@ int main(int n_args, int **args)
         QueryPerformanceCounter(&current_time);
         float dt = (float)((double)(current_time.QuadPart - last_time.QuadPart) / 10000000.f);
 
-        hz_timer += dt;
-        if(hz_timer >= (1.f / HZ)) {
-            hz_timer = 0.f;
+        update_timers_timer += dt;
+        run_program_timer += dt;
+        if(run_program_timer >= (1.f / RUN_PROGRAM_HZ)) {
+            run_program_timer = 0.f;
 
             ui8 num_available_input_keys = 0;
             read_input(input_keys, NUM_KEYS, &num_available_input_keys);
@@ -79,7 +82,7 @@ int main(int n_args, int **args)
             chip8_feed_input(&chip8, chip8_input_keys, num_available_chip8_input_keys);
 
             ui8 event = 0;
-            chip8_tick(&chip8, &event);
+            chip8_run_program(&chip8, &event);
 
             if(event == EVENT_DRAW) {
                 chip8_pixel_data(&chip8, pixels, SCREEN_PIXELS);
@@ -87,9 +90,15 @@ int main(int n_args, int **args)
             }
         }
 
+        if(update_timers_timer >= (1.f / UPDATE_TIMERS_HZ)) {
+            update_timers_timer = 0.f;
+
+            chip8_update_timers(&chip8);
+        }
+
         QueryPerformanceCounter(&last_time);
         float frame_time = (float)((double)(last_time.QuadPart - current_time.QuadPart) / 10000000.f) + 0.002f; // Sleep(1) will result in ~2ms
-        if(frame_time < (1.f / HZ))
+        if(frame_time < (1.f / RUN_PROGRAM_HZ))
             Sleep(1);
     }
 
@@ -169,16 +178,14 @@ void map_input(const InputKey *keys, const ui8 num_keys, Chip8InputKey *chip8_ke
 
 void draw(const ui8 *pixels, const ui16 num_pixels, const HANDLE handle, CHAR_INFO *screen_buffer, const COORD screen_buffer_size)
 {
-    if(pixels == NULL || num_pixels == 0 || screen_buffer == NULL || (screen_buffer_size.X + screen_buffer_size.Y) == 0)
+    const ui16 num_screen_buffer_pixels = screen_buffer_size.X * screen_buffer_size.Y;
+    if(pixels == NULL || num_pixels == 0 || screen_buffer == NULL || num_screen_buffer_pixels == 0)
         return;
 
-    const ui16 num_screen_buffer_pixels = screen_buffer_size.X * screen_buffer_size.Y;
     for(ui16 i = 0; i < num_pixels && i < num_screen_buffer_pixels; ++i)
-    {
         screen_buffer[i].Attributes = pixels[i] != 0 ? BACKGROUND_RED|BACKGROUND_GREEN|BACKGROUND_BLUE|BACKGROUND_INTENSITY : 0;
-    }
 
     const COORD buffer_start = {0};
-    SMALL_RECT buffer_rect = { 0, 0, screen_buffer_size.X - 1, screen_buffer_size.Y - 1 }; // const gives C4090
+    SMALL_RECT buffer_rect = { 0, 0, screen_buffer_size.X, screen_buffer_size.Y };
     WriteConsoleOutput(handle, screen_buffer, screen_buffer_size, buffer_start, &buffer_rect);
 }
