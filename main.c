@@ -59,9 +59,9 @@ int main(int n_args, int **args)
     ui8 pixels[SCREEN_PIXELS] = {0};
     CHAR_INFO screen_buffer[SCREEN_PIXELS] = {0};
 
-    const float UPDATE_TIMERS_HZ = 60.f;
+    const float TIMERS_UPDATE_HZ = 60.f;
     const float RUN_PROGRAM_HZ = 10.f * 60.f;
-    float update_timers_timer = 0.f;
+    float timers_update_timer = 0.f;
     float run_program_timer = 0.f;
     ui8 run = 1;
     while(run) 
@@ -70,7 +70,7 @@ int main(int n_args, int **args)
         QueryPerformanceCounter(&current_time);
         float dt = (float)((double)(current_time.QuadPart - last_time.QuadPart) / 10000000.f);
 
-        update_timers_timer += dt;
+        timers_update_timer += dt;
         run_program_timer += dt;
         if(run_program_timer >= (1.f / RUN_PROGRAM_HZ)) {
             run_program_timer = 0.f;
@@ -90,8 +90,8 @@ int main(int n_args, int **args)
             }
         }
 
-        if(update_timers_timer >= (1.f / UPDATE_TIMERS_HZ)) {
-            update_timers_timer = 0.f;
+        if(timers_update_timer >= (1.f / TIMERS_UPDATE_HZ)) {
+            timers_update_timer = 0.f;
 
             chip8_update_timers(&chip8);
         }
