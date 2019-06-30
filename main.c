@@ -15,7 +15,7 @@ typedef struct InputMap
     ui8 chip8_key_index;
 } InputMap;
 
-const InputMap INPUT_MAP[NUM_KEYS] =
+const InputMap INPUT_MAP[C8_NUM_KEYS] =
 {
     { 0x31, C8_KEY_1 }, { 0x32, C8_KEY_2 }, { 0x33, C8_KEY_3 }, { 0x34, C8_KEY_C }, // 1:1, 2:2, 3:3, 4:C
     { 0x51, C8_KEY_4 }, { 0x57, C8_KEY_5 }, { 0x45, C8_KEY_6 }, { 0x52, C8_KEY_D }, // Q:4, W:5, E:6, R:D
@@ -44,9 +44,9 @@ int main(int n_args, int **args)
     SetWindowsHookEx(WH_KEYBOARD_LL, _keyboard_proc_func, GetModuleHandle(NULL), 0);
 
     const HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
-    const SMALL_RECT window_size = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT - 1 };
+    const SMALL_RECT window_size = { 0, 0, C8_SCREEN_WIDTH, C8_SCREEN_HEIGHT - 1 };
     SetConsoleWindowInfo(handle, TRUE, &window_size);
-    const COORD screen_buffer_size = { SCREEN_WIDTH, SCREEN_HEIGHT };
+    const COORD screen_buffer_size = { C8_SCREEN_WIDTH, C8_SCREEN_HEIGHT };
     SetConsoleScreenBufferSize(handle, screen_buffer_size);
 
     Chip8 chip8 = {0};
@@ -54,10 +54,10 @@ int main(int n_args, int **args)
     chip8_load_rom(&chip8, "./roms/INVADERS");
 
     LARGE_INTEGER current_time = {0}, last_time = {0};
-    InputKey input_keys[NUM_KEYS] = {0};
-    Chip8InputKey chip8_input_keys[NUM_KEYS] = {0};
-    ui8 pixels[SCREEN_PIXELS] = {0};
-    CHAR_INFO screen_buffer[SCREEN_PIXELS] = {0};
+    InputKey input_keys[C8_NUM_KEYS] = {0};
+    Chip8InputKey chip8_input_keys[C8_NUM_KEYS] = {0};
+    ui8 pixels[C8_SCREEN_PIXELS] = {0};
+    CHAR_INFO screen_buffer[C8_SCREEN_PIXELS] = {0};
 
     const float TIMERS_UPDATE_HZ = 60.f;
     const float RUN_PROGRAM_HZ = 10.f * 60.f;
@@ -76,17 +76,17 @@ int main(int n_args, int **args)
             run_program_timer = 0.f;
 
             ui8 num_available_input_keys = 0;
-            read_input(input_keys, NUM_KEYS, &num_available_input_keys);
+            read_input(input_keys, C8_NUM_KEYS, &num_available_input_keys);
             ui8 num_available_chip8_input_keys = 0;
-            map_input(input_keys, num_available_input_keys, chip8_input_keys, NUM_KEYS, &num_available_chip8_input_keys);
+            map_input(input_keys, num_available_input_keys, chip8_input_keys, C8_NUM_KEYS, &num_available_chip8_input_keys);
             chip8_feed_input(&chip8, chip8_input_keys, num_available_chip8_input_keys);
 
             ui8 event = 0;
             chip8_run_program(&chip8, &event);
 
-            if(event == EVENT_DRAW) {
-                chip8_pixel_data(&chip8, pixels, SCREEN_PIXELS);
-                draw(pixels, SCREEN_PIXELS, handle, screen_buffer, screen_buffer_size);
+            if(event == C8_EVENT_DRAW) {
+                chip8_pixel_data(&chip8, pixels, C8_SCREEN_PIXELS);
+                draw(pixels, C8_SCREEN_PIXELS, handle, screen_buffer, screen_buffer_size);
             }
         }
 
@@ -164,7 +164,7 @@ void map_input(const InputKey *keys, const ui8 num_keys, Chip8InputKey *chip8_ke
 
     for(ui8 key = 0; key < num_keys && key < num_chip8_keys; ++key)
     {
-        for(ui8 map = 0; map < NUM_KEYS; ++map)
+        for(ui8 map = 0; map < C8_NUM_KEYS; ++map)
         {
             if(keys[key].virtual_key_code == INPUT_MAP[map].virtual_key_code)
             {
