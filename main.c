@@ -37,7 +37,7 @@ void read_input(InputKey *keys, const ui8 num_keys, ui8 *num_available_keys);
 void map_input(const InputKey *keys, const ui8 num_keys, Chip8InputKey *chip8_keys, const ui8 num_chip8_keys, ui8 *num_available_chip8_keys);
 void draw(const ui8 *pixels, const ui16 num_pixels, const HANDLE handle, CHAR_INFO *screen_buffer, const COORD screen_buffer_size);
 
-int main(int n_args, int **args)
+int main(int n_args, char **args)
 {
     (void)n_args; (void)args;
 

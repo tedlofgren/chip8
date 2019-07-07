@@ -40,10 +40,11 @@ void chip8_setup_fonts(Chip8 *chip8)
 
 void chip8_load_rom(Chip8 *chip8, const char *rom_file_path)
 {
-    FILE *rom = fopen(rom_file_path, "rb");
-    if(rom == NULL)
+    FILE *rom = NULL;
+    const i32 error = fopen_s(&rom, rom_file_path, "rb");
+    if(error != 0)
     {
-        printf("Failed to load rom `%s`\n", rom_file_path);
+        printf("Failed to load rom `%s`\n with error: `%ld`", rom_file_path, error);
         return;
     }
 
@@ -55,6 +56,8 @@ void chip8_load_rom(Chip8 *chip8, const char *rom_file_path)
         *buffer = (ui8)data;
         buffer++;
     }
+
+    fclose(rom);
 
     chip8->program_counter = C8_ROM_PLACEMENT;
 }
@@ -289,7 +292,7 @@ void chip8_run_program(Chip8 *chip8, ui8 *event)
                 const ui8 screen_index_y = (screen_position_y + y) * C8_SCREEN_WIDTH_SIZE;
 
                 const ui16 sprite_pixels = sprite[y] << 8 >> sprite_offset_bits;
-                const ui8 sprite_pixel_groups[2] = { (sprite_pixels & 0xFF00) >> 8, sprite_pixels & 0x00FF }; // TODO: Fix warning
+                const ui8 sprite_pixel_groups[2] = { (sprite_pixels & 0xFF00) >> 8, sprite_pixels & 0x00FF };
                 for(ui8 x = 0; x < 2; ++x)
                 {
                     const ui8 screen_index_x = (screen_position_x / C8_SCREEN_WIDTH_SIZE + x) % C8_SCREEN_WIDTH_SIZE;
