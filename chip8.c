@@ -119,6 +119,14 @@ void chip8_run_program(Chip8 *chip8, ui8 *event)
                 add_program_counter += 2;
             break;
         }
+        case 0x5000:
+        {
+            const ui8 register_index_x = (opcode & 0x0F00) >> 8;
+            const ui8 register_index_y = (opcode & 0x00F0) >> 4;
+            if(chip8->registers[register_index_x] == chip8->registers[register_index_y])
+                add_program_counter += 2;
+            break;
+        }
         case 0x6000:
         {
             const ui8 register_index = (opcode & 0x0F00) >> 8;
@@ -194,9 +202,76 @@ void chip8_run_program(Chip8 *chip8, ui8 *event)
             }  
             break;
         }
+        case 0x9000:
+        {
+            const ui8 register_index_x = (opcode & 0x0F00) >> 8;
+            const ui8 register_index_y = (opcode & 0x00F0) >> 4;
+            if(chip8->registers[register_index_x] != chip8->registers[register_index_y])
+                add_program_counter += 2;
+            break;
+        }
         case 0xA000:
             chip8->index_register = (opcode & 0x0FFF);
             break;
+        case 0xB000:
+            const ui16 next_program_counter = (opcode & 0x0FFF) + chip8->registers[0];
+            chip8->program_counter = next_program_counter;
+            add_program_counter = 0;
+            break;
+        case 0xC000:
+        {
+            const ui8 register_index = (opcode & 0x0F00) >> 8;
+            const ui8 value = opcode & 0x00FF;
+            const ui8 random_value = rand() % 0xFF;
+            chip8->registers[register_index] = (ui8)(value & random_value);
+            break;
+        }
+        case 0xD000:
+        {
+            const ui8 screen_position_x = chip8->registers[(opcode & 0x0F00) >> 8];
+            const ui8 screen_position_y = chip8->registers[(opcode & 0x00F0) >> 4];
+            const ui8 sprite_height = (ui8)(opcode & 0x000F);
+            const ui8 *sprite = &chip8->memory[chip8->index_register];
+
+            local_event = C8_EVENT_DRAW;
+
+            // Clear collision
+            chip8->registers[0xF] = 0;
+     
+            const ui8 sprite_offset_bits = screen_position_x & 0x7;
+            for(ui8 y = 0; y < sprite_height; ++y)
+            {
+                const ui8 screen_index_y = (screen_position_y + y) * C8_SCREEN_WIDTH_SIZE;
+
+                const ui16 sprite_pixels = sprite[y] << 8 >> sprite_offset_bits;
+                const ui8 sprite_pixel_groups[2] = { (sprite_pixels & 0xFF00) >> 8, sprite_pixels & 0x00FF };
+                for(ui8 x = 0; x < 2; ++x)
+                {
+                    const ui8 screen_index_x = (screen_position_x / C8_SCREEN_WIDTH_SIZE + x) % C8_SCREEN_WIDTH_SIZE;
+
+                    const ui8 screen_pixel_group = chip8->screen_memory[screen_index_x + screen_index_y];
+                    const ui8 sprite_pixel_group = sprite_pixel_groups[x];
+
+                    const ui8 new_screen_pixel_group = screen_pixel_group ^ sprite_pixel_group;
+                    chip8->screen_memory[screen_index_x + screen_index_y] = new_screen_pixel_group;
+
+                    // Check for erased pixels (collision)
+                    if(new_screen_pixel_group < screen_pixel_group)
+                        chip8->registers[0xF] = 1;
+                }
+            }
+            break;
+        }
+        case 0xE000:
+        {
+            const ui8 register_index = (opcode & 0x0F00) >> 8;
+            const ui8 sub_opcode = opcode & 0x00FF;
+            const ui8 key_index = chip8->registers[register_index];
+            const ui8 key_state = chip8->keys[key_index];
+            if((sub_opcode == 0x9E && key_state == 1) || (sub_opcode == 0xA1 && key_state == 0))
+                add_program_counter += 2;
+            break;
+        }
         case 0xF000:
         {
             const ui8 register_index = (opcode & 0x0F00) >> 8;
@@ -264,60 +339,6 @@ void chip8_run_program(Chip8 *chip8, ui8 *event)
                 default:
                     printf("Unsupported opcode %X\n", opcode);
             }
-            break;
-        }
-        case 0xC000:
-        {
-            const ui8 register_index = (opcode & 0x0F00) >> 8;
-            const ui8 value = opcode & 0x00FF;
-            const ui8 random_value = rand() % 0xFF;
-            chip8->registers[register_index] = (ui8)(value & random_value);
-            break;
-        }
-        case 0xD000:
-        {
-            const ui8 screen_position_x = chip8->registers[(opcode & 0x0F00) >> 8];
-            const ui8 screen_position_y = chip8->registers[(opcode & 0x00F0) >> 4];
-            const ui8 sprite_height = (ui8)(opcode & 0x000F);
-            const ui8 *sprite = &chip8->memory[chip8->index_register];
-
-            local_event = C8_EVENT_DRAW;
-
-            // Clear collision
-            chip8->registers[0xF] = 0;
-     
-            const ui8 sprite_offset_bits = screen_position_x & 0x7;
-            for(ui8 y = 0; y < sprite_height; ++y)
-            {
-                const ui8 screen_index_y = (screen_position_y + y) * C8_SCREEN_WIDTH_SIZE;
-
-                const ui16 sprite_pixels = sprite[y] << 8 >> sprite_offset_bits;
-                const ui8 sprite_pixel_groups[2] = { (sprite_pixels & 0xFF00) >> 8, sprite_pixels & 0x00FF };
-                for(ui8 x = 0; x < 2; ++x)
-                {
-                    const ui8 screen_index_x = (screen_position_x / C8_SCREEN_WIDTH_SIZE + x) % C8_SCREEN_WIDTH_SIZE;
-
-                    const ui8 screen_pixel_group = chip8->screen_memory[screen_index_x + screen_index_y];
-                    const ui8 sprite_pixel_group = sprite_pixel_groups[x];
-
-                    const ui8 new_screen_pixel_group = screen_pixel_group ^ sprite_pixel_group;
-                    chip8->screen_memory[screen_index_x + screen_index_y] = new_screen_pixel_group;
-
-                    // Check for erased pixels (collision)
-                    if(new_screen_pixel_group < screen_pixel_group)
-                        chip8->registers[0xF] = 1;
-                }
-            }
-            break;
-        }
-        case 0xE000:
-        {
-            const ui8 register_index = (opcode & 0x0F00) >> 8;
-            const ui8 sub_opcode = opcode & 0x00FF;
-            const ui8 key_index = chip8->registers[register_index];
-            const ui8 key_state = chip8->keys[key_index];
-            if((sub_opcode == 0x9E && key_state == 1) || (sub_opcode == 0xA1 && key_state == 0))
-                add_program_counter += 2;
             break;
         }
         default:
