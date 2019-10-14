@@ -51,7 +51,7 @@ int main(int n_args, char **args)
 
     Chip8 chip8 = {0};
     chip8_init(&chip8);
-    chip8_load_rom(&chip8, "./roms/INVADERS");
+    chip8_load_rom(&chip8, "./roms/pong");
 
     LARGE_INTEGER current_time = {0}, last_time = {0};
     InputKey input_keys[C8_NUM_KEYS] = {0};
@@ -59,21 +59,20 @@ int main(int n_args, char **args)
     ui8 pixels[C8_SCREEN_PIXELS] = {0};
     CHAR_INFO screen_buffer[C8_SCREEN_PIXELS] = {0};
 
-    const float TIMERS_UPDATE_HZ = 60.f;
-    const float RUN_PROGRAM_HZ = 10.f * 60.f;
-    float timers_update_timer = 0.f;
-    float run_program_timer = 0.f;
-    ui8 run = 1;
-    while(run) 
+    QueryPerformanceCounter(&current_time);
+
+    const float UPDATE_HZ = 60.f;
+    const ui8 RUNS_PER_UPDATE = 10;
+    float update_timer = 0.f;
+    while(1) 
     {
         last_time = current_time;
         QueryPerformanceCounter(&current_time);
-        float dt = (float)((double)(current_time.QuadPart - last_time.QuadPart) / 10000000.f);
+        const float dt = (float)((double)(current_time.QuadPart - last_time.QuadPart) / 10000000.f);
 
-        timers_update_timer += dt;
-        run_program_timer += dt;
-        if(run_program_timer >= (1.f / RUN_PROGRAM_HZ)) {
-            run_program_timer = 0.f;
+        update_timer += dt;
+        if(update_timer >= (1.f / UPDATE_HZ)) {
+            update_timer = 0.f;
 
             ui8 num_available_input_keys = 0;
             read_input(input_keys, C8_NUM_KEYS, &num_available_input_keys);
@@ -81,25 +80,21 @@ int main(int n_args, char **args)
             map_input(input_keys, num_available_input_keys, chip8_input_keys, C8_NUM_KEYS, &num_available_chip8_input_keys);
             chip8_feed_input(&chip8, chip8_input_keys, num_available_chip8_input_keys);
 
-            ui8 event = 0;
-            chip8_run_program(&chip8, &event);
+            for(ui8 i = 0; i < RUNS_PER_UPDATE; ++i)
+            {
+                ui8 event = 0;
+                chip8_run_program(&chip8, &event);
 
-            if(event == C8_EVENT_DRAW) {
-                chip8_pixel_data(&chip8, pixels, C8_SCREEN_PIXELS);
-                draw(pixels, C8_SCREEN_PIXELS, handle, screen_buffer, screen_buffer_size);
+                if(event == C8_EVENT_DRAW) {
+                    chip8_pixel_data(&chip8, pixels, C8_SCREEN_PIXELS);
+                    draw(pixels, C8_SCREEN_PIXELS, handle, screen_buffer, screen_buffer_size);
+                }
             }
-        }
-
-        if(timers_update_timer >= (1.f / TIMERS_UPDATE_HZ)) {
-            timers_update_timer = 0.f;
 
             chip8_update_timers(&chip8);
         }
 
-        QueryPerformanceCounter(&last_time);
-        float frame_time = (float)((double)(last_time.QuadPart - current_time.QuadPart) / 10000000.f) + 0.002f; // Sleep(1) will result in ~2ms
-        if(frame_time < (1.f / RUN_PROGRAM_HZ))
-            Sleep(1);
+        Sleep(1);
     }
 
     return 0;
